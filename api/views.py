@@ -6,76 +6,89 @@ from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
 from zk import ZK
 from zk.exception import ZKError, ZKErrorConnection, ZKNetworkError
-from .serializer import UserSerializer, AttendanceSerializer
+from .serializer import (
+    UserCreateSerializer,
+    UserGetSerializer,
+    AttendanceSerializer,
+    UserUpdateSerializer,
+)
 
 # Create conexion whit library Zk
 conn = None
-zk = ZK("192.168.0.114", port=4370)
+zk = ZK("192.168.0.122", port=4370)
 datos_post = None
 
 
 # Create your views here.
 @csrf_exempt
-@api_view(["GET", "POST"])
-def users(request):
+@api_view(["GET", "POST", "DELETE", "PUT"])
+def users(request, uid=None):
+
+    # Conexion con dispositivo
     try:
         global conn, zk
         conn = zk.connect()
-        print("....Disabled device....")
         conn.disable_device()
-        print("---Get users ---")
         users = conn.get_users()
         print("---Current total users----", len(users))
     except Exception as ex:
-        print("Process terminate: ", ex)
         return JsonResponse(ex)
-    # Obtener datos
+    # ---------------------GET------------------------------#
     if request.method == "GET":
-        serializer = UserSerializer(users, many=True)
-        return JsonResponse({"success": True, "Users": serializer.data}, safe=False)
-    # ----------------Method create user-------------------------------
+        try:
+            serializer = UserGetSerializer(users, many=True)
+            return JsonResponse({"success": True, "Users": serializer.data}, safe=False)
+        except Exception as ex:
+            return JsonResponse({"success": False, "error": str(ex)})
+
+    # ----------------POST-------------------------------
     elif request.method == "POST":
         data = request.data
-        print("datos nuevos", data)
-        serializer = UserSerializer(data=data)
-        print("Serializado", serializer)
+        serializer = UserCreateSerializer(data=data)
         if serializer.is_valid():
             userData = serializer.validated_data
-            print("Datos serializados", userData)
             try:
                 conn.set_user(
-                    # uid=userData.get("uid"),
-                    user_id=userData.get("user_id"),
                     name=userData.get("name"),
                     privilege=userData.get("privilege"),
                     password=userData.get("password"),
-                    # user_id=userData.get(
-                    #     "user_id"
-                    # ),  # Asegúrate de proporcionar user_id si es necesario
                 )
                 conn.get_users()
-                # Devuelve una respuesta de éxito con los datos serializados
                 return JsonResponse({"success": True, "Data": userData})
             except Exception as ex:
                 print("Errores", ex)
-                # Devuelve una respuesta de error si hay una excepción al establecer el usuario
                 return JsonResponse({"success": False, "error": str(ex)})
-        # Devuelve una respuesta de error con los errores de validación del serializador si los datos no son válidos
+        return JsonResponse({"success": False, "errors": serializer.errors})
+    # ------------------------UPDATE USER -------------------------------------
+    elif request.method == "PUT":
+
+        data = request.data
+        serializer = UserUpdateSerializer(data=data)
+        if serializer.is_valid():
+            userData = serializer.validated_data
+            try:
+                conn.set_user(
+                    uid=userData.get("uid"),
+                    name=userData.get("name"),
+                    privilege=userData.get("privilege"),
+                    password=userData.get("password"),
+                )
+                conn.get_users()
+                return JsonResponse({"success": True, "Data": userData})
+            except Exception as ex:
+                print("Errores", ex)
+                return JsonResponse({"success": False, "error": str(ex)})
         return JsonResponse({"success": False, "errors": serializer.errors})
 
-
-@csrf_exempt
-@api_view(["DELETE"])
-def deleteUser(request, user_id):
-    if request.method == "DELETE":
-        data = request.data
-        print("Request", data)
-        print("UID", user_id)
-        transfor = int(user_id)
-        conn = zk.connect()
-
-        delete = conn.delete_user(transfor)
-        return JsonResponse({"success": True, "data": delete})
+    # --------------------DELETE-----------------------------------------------
+    elif request.method == "DELETE":
+        try:
+            data = int(uid)
+            conn = zk.connect()
+            conn.delete_user(data)
+            return JsonResponse({"success": True, "data": data})
+        except Exception as ex:
+            return JsonResponse({"success": False, "Error": str(ex)})
 
 
 @csrf_exempt
@@ -89,7 +102,6 @@ def attendance_list(request):
         att_list = conn.get_attendance()
         att_list = AttendanceSerializer(att_list, many=True)
         print("Lista de datos: ", att_list)
-    
 
     except Exception as ex:
         print("Process terminate : {}".format(ex))

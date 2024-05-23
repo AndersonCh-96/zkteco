@@ -1,19 +1,36 @@
 from rest_framework import serializers
 
 
-class UserSerializer(serializers.Serializer):
-    user_id = serializers.CharField(max_length=100)
-    # uid = serializers.IntegerField(required=True, max_value=5000)
+# Mapper createUser
+class UserCreateSerializer(serializers.Serializer):
+
     name = serializers.CharField(required=True, max_length=200)
     privilege = serializers.IntegerField(required=True, max_value=60000)
     password = serializers.CharField(required=True, max_length=200)
     # group_id = serializers.CharField(required=False, max_length=200)
-
     # card = serializers.IntegerField(max_value=300)
 
 
+# mapper update
+class UserUpdateSerializer(serializers.Serializer):
+    uid = serializers.IntegerField(required=True, max_value=5000)
+    name = serializers.CharField(required=True, max_length=200)
+    privilege = serializers.IntegerField(required=True, max_value=60000)
+    password = serializers.CharField(required=True, max_length=200)
+
+
+# Maper getUser
+class UserGetSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField(max_value=100)
+    uid = serializers.IntegerField(required=True, max_value=5000)
+    name = serializers.CharField(required=True, max_length=200)
+    privilege = serializers.IntegerField(required=True, max_value=60000)
+    password = serializers.CharField(required=True, max_length=200)
+
+
+# Maper DeletUser
 class UserDeleteSerializer(serializers.Serializer):
-    user_id = serializers.IntegerField(required=True, max_value=5000)
+    uid = serializers.IntegerField(required=True)
 
 
 class AttendanceSerializer(serializers.Serializer):
