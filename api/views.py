@@ -5,6 +5,8 @@ from django.http.response import HttpResponse
 from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
 from zk import ZK
+import json
+import requests
 from zk.exception import ZKError, ZKErrorConnection, ZKNetworkError
 from .serializer import (
     UserCreateSerializer,
@@ -15,7 +17,7 @@ from .serializer import (
 
 # Create conexion whit library Zk
 conn = None
-zk = ZK("192.168.0.122", port=4370)
+zk = ZK("192.168.0.122", port=4370, timeout=5)
 datos_post = None
 
 
@@ -96,12 +98,12 @@ def attendance_list(request):
     try:
         global conn, zk
         conn = zk.connect()
-        print("Disabling device ...")
         conn.disable_device()
-        print("--- Get attendances ---")
+
         att_list = conn.get_attendance()
+        for data in att_list:
+            print(f"UID: {data.uid}, User ID: {data.user_id}")
         att_list = AttendanceSerializer(att_list, many=True)
-        print("Lista de datos: ", att_list)
 
     except Exception as ex:
         print("Process terminate : {}".format(ex))
@@ -111,36 +113,56 @@ def attendance_list(request):
         return JsonResponse(att_list.data, safe=False)
 
 
-@csrf_exempt
 def attendance_live_capture(request):
+    try:
+        conn = zk.connect()
+        for attendance in conn.live_capture():
+            if attendance is None:
+                pass
+            else:
+                att_data = AttendanceSerializer(attendance)
+                print(att_data.data)
+                att_all_list = conn.get_attendance()
+                payload = {"current_att_data": att_all_list,
+                           "att_all_list": att_data}
+                res = requests.post(
+                    "http://localhost/", params=payload)
+                print(res.json())
+    except UnboundLocalError:
+        print(" I am unable to connect to the server")
+    except Exception as e:
+        print("Process terminate : {}".format(e))
+    finally:
+        pass
 
-    # Start monitoring and transmiting real-time data
+    # Si llegamos aquí, es porque no se capturó ninguna asistencia
 
-    # if not zk.connect():
-    #     raise ZKErrorConnection("Conexión no establecida")
-    # try:
-    #     conn = zk.connect()
-    #     for attendance in conn.live_capture():
-    #         if attendance is None:
-    #             pass
-    #         else:
-    #             print("Sinserializar: ", attendance)
-    #             print("#############################")
-    #             att_data = AttendanceSerializer(attendance, many=True)
-    #             print("Attendance real time", att_data.data)
-    #             att_all_list = conn.get_attendance()
-    #             print("Atendance list", att_all_list)
-    #             JsonResponse(att_data, safe=False)
-    #             # payload = {"current_att_data": att_all_list, "att_all_list": att_data}
-    #             # res = requests.post(
-    #             #     "http://localhost/hrm/api/zkteco/att-new-record", params=payload)
-    #             # print(res.json())
-    # except UnboundLocalError:
-    #     print(" I am unable to connect to the server")
-    # except Exception as e:
-    #     print("Process terminate : {}".format(e))
-    # finally:
-    pass
+
+@csrf_exempt
+def new_record(request):
+    if request.method == "POST":
+        try:
+            # Decodificar el cuerpo de la solicitud JSON
+            print("data", request.b)
+            data = json.loads(request.body)
+            print("Data", data)
+            current_att_data = data.get("current_att_data")
+            att_all_list = data.get("att_all_list")
+
+            print("Datos en linea:", current_att_data)
+            print("Todos los datos", att_all_list)
+
+            # Procesar los datos recibidos según tus necesidades
+            # Por ejemplo, podrías guardarlos en la base de datos, etc.
+
+            # Retornar una respuesta JSON indicando éxito
+            return JsonResponse(
+                {"message": "Datos recibidos correctamente"}, status=200
+            )
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Error al decodificar JSON"}, status=400)
+    else:
+        return JsonResponse({"error": "Método no permitido"}, status=405)
 
 
 @csrf_exempt
@@ -156,26 +178,9 @@ def refresh(request):
 
         # Devolver una respuesta de éxito
         return HttpResponse(
-            {"mensaje": "El dispositivo ha sido apagado correctamente"}, status=200
+            {"Clear data": "El dispositivo borro todas las entradas"}, status=200
         )
 
     except Exception as e:
         # Si ocurre algún error, devolver una respuesta de error
         return HttpResponse({"error": str(e)}, status=500)
-
-    if request.method == "GET":
-        return JsonResponse(att_list.data, safe=False)
-
-
-@csrf_exempt
-@api_view(["GET", "POST"])
-def testeo(request):
-    try:
-        if request.method == "POST":
-            data = request.data
-            attendances = AttendanceSerializer(data, many=True)
-            datos_post = attendances
-            print("datos entrando", datos_post)
-            return HttpResponse({"message": "Ok"})
-    except:
-        print("An exception occurred")
