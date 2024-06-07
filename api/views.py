@@ -17,7 +17,9 @@ from .serializer import (
 
 # Create conexion whit library Zk
 conn = None
-zk = ZK("192.168.0.122", port=4370, timeout=5)
+zk = ZK(
+    "192.168.0.122", port=4370, timeout=5, password=0, force_udp=False, ommit_ping=False
+)
 datos_post = None
 
 
@@ -99,23 +101,36 @@ def attendance_list(request):
         global conn, zk
         conn = zk.connect()
         conn.disable_device()
-
-        att_list = conn.get_attendance()
-        for data in att_list:
-            print(f"UID: {data.uid}, User ID: {data.user_id}")
-        att_list = AttendanceSerializer(att_list, many=True)
+        attendances = conn.get_attendance()
+        attendance_list = []
+        for attendance in attendances:
+            if attendance.user_id and attendance.timestamp != "2000-01-01T00:00:00Z":
+                attendance_list.append(
+                    {
+                        "uid": attendance.uid,
+                        "user_id": attendance.user_id,
+                        "timestamp": attendance.timestamp.strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                        "punch": attendance.punch,
+                        "status": attendance.status,
+                    }
+                )
+            else:
+                print(f"Invalid data found: {attendance}")
 
     except Exception as ex:
         print("Process terminate : {}".format(ex))
         return JsonResponse(ex)
 
     if request.method == "GET":
-        return JsonResponse(att_list.data, safe=False)
+        return JsonResponse(attendance_list, safe=False)
 
 
 def attendance_live_capture(request):
     try:
         conn = zk.connect()
+
         for attendance in conn.live_capture():
             if attendance is None:
                 pass
@@ -123,17 +138,19 @@ def attendance_live_capture(request):
                 att_data = AttendanceSerializer(attendance)
                 print(att_data.data)
                 att_all_list = conn.get_attendance()
-                payload = {"current_att_data": att_all_list,
-                           "att_all_list": att_data}
-                res = requests.post(
-                    "http://localhost/", params=payload)
-                print(res.json())
+                # payload = {"current_att_data": att_all_list, "att_all_list": att_data}
+                # res = requests.post("http://localhost/", params=payload)
+                # print(res.json())
+        return JsonResponse(att_all_list)
     except UnboundLocalError:
         print(" I am unable to connect to the server")
     except Exception as e:
         print("Process terminate : {}".format(e))
+        return JsonResponse(e)
     finally:
-        pass
+        if conn:
+            conn.enable_device()
+            conn.disconnect()
 
     # Si llegamos aquí, es porque no se capturó ninguna asistencia
 
@@ -151,9 +168,6 @@ def new_record(request):
 
             print("Datos en linea:", current_att_data)
             print("Todos los datos", att_all_list)
-
-            # Procesar los datos recibidos según tus necesidades
-            # Por ejemplo, podrías guardarlos en la base de datos, etc.
 
             # Retornar una respuesta JSON indicando éxito
             return JsonResponse(
